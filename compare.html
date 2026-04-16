@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ReconView — Compare</title>
+  <title>ARTEMIS III — Domain OSINT Checker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
@@ -107,6 +107,17 @@
     .cmp-log-status{ font-size: 10px; flex-shrink: 0; }
     .spin-sm { display:inline-block;width:10px;height:10px;border:1.5px solid var(--c-border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle; }
     @keyframes spin { to { transform:rotate(360deg); } }
+
+    @keyframes rocketFloat   { 0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-10px) rotate(2deg)} }
+    @keyframes flameFlicker  { 0%,100%{transform:scaleY(1) scaleX(1);opacity:1}25%{transform:scaleY(1.2) scaleX(0.9);opacity:.85}50%{transform:scaleY(.85) scaleX(1.1);opacity:.95} }
+    @keyframes particleFly   { 0%{transform:translate(0,0) scale(1);opacity:.8}100%{transform:translate(var(--px),36px) scale(0);opacity:0} }
+
+    .cmp-rocket-wrap  { display:flex;flex-direction:column;align-items:center;padding:16px 0 4px;position:relative; }
+    .cmp-rocket-ship  { animation:rocketFloat 2.2s ease-in-out infinite;transform-origin:center bottom; }
+    .rocket-svg       { width:44px;height:72px;display:block;margin:0 auto;filter:drop-shadow(0 3px 10px color-mix(in srgb,var(--accent) 35%,transparent)); }
+    .cmp-rocket-flame { width:28px;height:36px;margin:-4px auto 0;transform-origin:center top;animation:flameFlicker 0.25s ease-in-out infinite; }
+    .cmp-rocket-flame svg { display:block; }
+    .rocket-domain-cmp { color:var(--accent);font-weight:700; }
 
     /* Score header */
     .cmp-score-bar {
@@ -220,10 +231,13 @@
 
 <!-- ── Topbar ───────────────────────────────────────────────── -->
 <header class="cmp-topbar">
-  <div class="logo">RECON<span>VIEW</span></div>
+  <div class="logo">ARTEMIS<span>III</span></div>
   <div class="topbar-sep"></div>
   <span class="topbar-label">compare mode</span>
-  <a href="index.html" style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);text-decoration:none;padding:5px 10px;border:0.5px solid var(--c-border);border-radius:var(--r-md);transition:color 0.15s" onmouseover="this.style.color='var(--c-text)'" onmouseout="this.style.color='var(--c-muted)'">← single view</a>
+  <a href="index.html" style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);text-decoration:none;padding:5px 10px;border:0.5px solid var(--c-border);border-radius:var(--r-md);transition:all 0.15s;display:inline-flex;align-items:center;gap:6px" onmouseover="this.style.color='var(--c-text)';this.style.borderColor='var(--c-border-em)'" onmouseout="this.style.color='var(--c-muted)';this.style.borderColor='var(--c-border)'">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7 2L3 6l4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    single view
+  </a>
   <button class="btn-scan-both" id="bothBtn" onclick="scanBoth()">SCAN BOTH</button>
   <div class="badge-live" style="margin-left:0"><div class="dot-live"></div>live</div>
 </header>
@@ -251,8 +265,35 @@
         <div class="pane-empty-title">Enter domain A</div>
         <div class="pane-empty-sub">Results will appear here after scanning</div>
       </div>
-      <div id="scanLogA" style="display:none" class="cmp-scan-log">
-        <div class="cmp-log-title">// scanning <span id="logDomainA"></span></div>
+<div id="scanLogA" style="display:none" class="cmp-scan-log">
+        <div class="cmp-rocket-wrap">
+          <div class="cmp-rocket-ship">
+            <svg class="rocket-svg" viewBox="0 0 60 100" fill="none">
+              <path d="M30 4 C18 4 10 22 10 42 L10 62 L30 70 L50 62 L50 42 C50 22 42 4 30 4Z" fill="var(--accent)" opacity="0.9"/>
+              <circle cx="30" cy="34" r="9" fill="var(--c-bg)" opacity="0.9"/>
+              <circle cx="30" cy="34" r="6" fill="var(--accent-bg)"/>
+              <path d="M10 52 L2 68 L10 64Z" fill="var(--accent-dim)"/>
+              <path d="M50 52 L58 68 L50 64Z" fill="var(--accent-dim)"/>
+              <path d="M30 4 C24 4 18 12 16 20 C21 14 26 10 30 10 C34 10 39 14 44 20 C42 12 36 4 30 4Z" fill="var(--accent-dim)"/>
+              <rect x="22" y="66" width="16" height="6" rx="2" fill="var(--c-surface)"/>
+            </svg>
+          </div>
+          <div class="cmp-rocket-flame">
+            <svg viewBox="0 0 36 48" fill="none">
+              <ellipse cx="18" cy="10" rx="8" ry="10" fill="#F97316" opacity="0.95"/>
+              <ellipse cx="18" cy="18" rx="6" ry="12" fill="#FBBF24" opacity="0.9"/>
+              <ellipse cx="18" cy="28" rx="4" ry="10" fill="#FDE68A" opacity="0.7"/>
+              <ellipse cx="14" cy="8"  rx="3" ry="6"  fill="#FB923C" opacity="0.6"/>
+              <ellipse cx="22" cy="8"  rx="3" ry="6"  fill="#FB923C" opacity="0.6"/>
+            </svg>
+          </div>
+          <div class="rocket-particles">
+            <span class="rp rp1"></span><span class="rp rp2"></span>
+            <span class="rp rp3"></span><span class="rp rp4"></span>
+            <span class="rp rp5"></span>
+          </div>
+        </div>
+        <div class="cmp-log-title">Scanning <span id="logDomainA" class="rocket-domain-cmp"></span></div>
         <div id="logLinesA"></div>
       </div>
       <div id="resultsA" style="display:none"></div>
@@ -284,8 +325,35 @@
         <div class="pane-empty-title">Enter domain B</div>
         <div class="pane-empty-sub">Results will appear here after scanning</div>
       </div>
-      <div id="scanLogB" style="display:none" class="cmp-scan-log">
-        <div class="cmp-log-title">// scanning <span id="logDomainB"></span></div>
+<div id="scanLogB" style="display:none" class="cmp-scan-log">
+        <div class="cmp-rocket-wrap">
+          <div class="cmp-rocket-ship">
+            <svg class="rocket-svg" viewBox="0 0 60 100" fill="none">
+              <path d="M30 4 C18 4 10 22 10 42 L10 62 L30 70 L50 62 L50 42 C50 22 42 4 30 4Z" fill="var(--accent)" opacity="0.9"/>
+              <circle cx="30" cy="34" r="9" fill="var(--c-bg)" opacity="0.9"/>
+              <circle cx="30" cy="34" r="6" fill="var(--accent-bg)"/>
+              <path d="M10 52 L2 68 L10 64Z" fill="var(--accent-dim)"/>
+              <path d="M50 52 L58 68 L50 64Z" fill="var(--accent-dim)"/>
+              <path d="M30 4 C24 4 18 12 16 20 C21 14 26 10 30 10 C34 10 39 14 44 20 C42 12 36 4 30 4Z" fill="var(--accent-dim)"/>
+              <rect x="22" y="66" width="16" height="6" rx="2" fill="var(--c-surface)"/>
+            </svg>
+          </div>
+          <div class="cmp-rocket-flame">
+            <svg viewBox="0 0 36 48" fill="none">
+              <ellipse cx="18" cy="10" rx="8" ry="10" fill="#F97316" opacity="0.95"/>
+              <ellipse cx="18" cy="18" rx="6" ry="12" fill="#FBBF24" opacity="0.9"/>
+              <ellipse cx="18" cy="28" rx="4" ry="10" fill="#FDE68A" opacity="0.7"/>
+              <ellipse cx="14" cy="8"  rx="3" ry="6"  fill="#FB923C" opacity="0.6"/>
+              <ellipse cx="22" cy="8"  rx="3" ry="6"  fill="#FB923C" opacity="0.6"/>
+            </svg>
+          </div>
+          <div class="rocket-particles">
+            <span class="rp rp1"></span><span class="rp rp2"></span>
+            <span class="rp rp3"></span><span class="rp rp4"></span>
+            <span class="rp rp5"></span>
+          </div>
+        </div>
+        <div class="cmp-log-title">Scanning <span id="logDomainB" class="rocket-domain-cmp"></span></div>
         <div id="logLinesB"></div>
       </div>
       <div id="resultsB" style="display:none"></div>
