@@ -198,9 +198,56 @@
 
     <!-- Scanning -->
     <div id="state-scanning" style="display:none">
-      <div class="scan-log">
-        <div class="scan-log-title">// scanning <span id="log-domain"></span></div>
-        <div id="log-lines"></div>
+      <div class="rocket-loader">
+
+        <!-- Rocket SVG -->
+        <div class="rocket-wrap">
+          <div class="rocket-ship">
+            <svg class="rocket-svg" viewBox="0 0 60 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Body -->
+              <path d="M30 4 C18 4 10 22 10 42 L10 62 L30 70 L50 62 L50 42 C50 22 42 4 30 4Z" fill="var(--accent)" opacity="0.9"/>
+              <!-- Window -->
+              <circle cx="30" cy="34" r="9" fill="var(--c-bg)" opacity="0.9"/>
+              <circle cx="30" cy="34" r="6" fill="var(--accent-bg)"/>
+              <!-- Wings left -->
+              <path d="M10 52 L2 68 L10 64Z" fill="var(--accent-dim)"/>
+              <!-- Wings right -->
+              <path d="M50 52 L58 68 L50 64Z" fill="var(--accent-dim)"/>
+              <!-- Nose -->
+              <path d="M30 4 C24 4 18 12 16 20 C21 14 26 10 30 10 C34 10 39 14 44 20 C42 12 36 4 30 4Z" fill="var(--accent-dim)"/>
+              <!-- Exhaust nozzle -->
+              <rect x="22" y="66" width="16" height="6" rx="2" fill="var(--c-surface2, #272725)"/>
+            </svg>
+          </div>
+
+          <!-- Flame -->
+          <div class="rocket-flame">
+            <svg viewBox="0 0 36 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="18" cy="10" rx="8" ry="10" fill="#F97316" opacity="0.95"/>
+              <ellipse cx="18" cy="18" rx="6" ry="12" fill="#FBBF24" opacity="0.9"/>
+              <ellipse cx="18" cy="28" rx="4" ry="10" fill="#FDE68A" opacity="0.7"/>
+              <ellipse cx="14" cy="8"  rx="3" ry="6"  fill="#FB923C" opacity="0.6"/>
+              <ellipse cx="22" cy="8"  rx="3" ry="6"  fill="#FB923C" opacity="0.6"/>
+            </svg>
+          </div>
+
+          <!-- Particles -->
+          <div class="rocket-particles">
+            <span class="rp rp1"></span>
+            <span class="rp rp2"></span>
+            <span class="rp rp3"></span>
+            <span class="rp rp4"></span>
+            <span class="rp rp5"></span>
+          </div>
+        </div>
+
+        <!-- Text below -->
+        <div class="rocket-label">
+          Scanning <span id="log-domain" class="rocket-domain"></span>
+        </div>
+        <div class="rocket-log-wrap">
+          <div id="log-lines" class="rocket-log-lines"></div>
+        </div>
       </div>
     </div>
 

@@ -204,7 +204,7 @@ async function startScan() {
   el('log-lines').innerHTML=''; Object.keys(logLines).forEach(k=>delete logLines[k]);
   hide('state-empty'); hide('state-results'); show('state-scanning');
   el('log-domain').textContent=domain; el('scanBtn').disabled=true; el('scanBtn').textContent='SCANNING…';
-  ['overview','dns','ssl','web','lang','headers','findings','dashboard','attack'].forEach(m=>setBadge(m,'s-loading','…'));
+  ['overview','dns','ssl','web','lang','headers','findings','dashboard','attack','radar'].forEach(m=>setBadge(m,'s-loading','…'));
 
   // DNS
   logAdd('dns','Querying DNS records (dns.google)…');
@@ -301,6 +301,8 @@ function renderResults() {
   renderDashboard(); renderAttackMap();
   renderIPTable(); renderWHOIS(); renderDNS(); renderEmailSec();
   renderCerts(); renderStack(); renderLanguage(); renderHeaders(); renderFindings();
+  renderRadar();
+  setBadge('radar','s-ok','→');
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -552,7 +554,213 @@ function switchTab(name,tabEl){
 }
 function gotoTab(name){
   if(el('state-results')?.style.display==='none') return;
-  const names=['dashboard','overview','dns','ssl','web','lang','headers','attack','findings'];
+  const names=['dashboard','overview','dns','ssl','web','lang','headers','attack','findings','radar'];
   switchTab(name,document.querySelectorAll('.tab')[names.indexOf(name)]||null);
 }
 document.addEventListener('DOMContentLoaded',()=>{el('domainInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')startScan();});});
+
+// ═══════════════════════════════════════════════════════════════
+// RADAR CHART — renderRadar()
+// Draws an SVG hexagon radar with 6 axes scored from real scan data
+// ═══════════════════════════════════════════════════════════════
+
+function computeRadarAxes() {
+  // ── SSL score (0–10) ─────────────────────────────────────────
+  // crt.sh certs found → presence = 10, none = 2
+  const subCount = new Set(
+    (D.certs||[]).flatMap(c=>(c.name_value||'').split('\n').map(s=>s.trim()).filter(Boolean))
+  ).size;
+  const ssl = D.certs.length > 0
+    ? Math.min(10, 4 + Math.min(6, Math.floor(subCount / 5)))
+    : 2;
+
+  // ── Email score (0–10) ───────────────────────────────────────
+  // SPF present = +3, DMARC present = +3, DMARC enforced = +2, MX = +2
+  const txt = (D.dns.TXT||[]).map(r=>r.data||'');
+  const spf   = txt.find(t=>t.startsWith('v=spf1'));
+  const dmarc = txt.find(t=>t.includes('v=DMARC1'));
+  const mx    = (D.dns.MX||[]).length > 0;
+  let email = 0;
+  if (spf && !spf.includes('+all')) email += 3;
+  if (dmarc) { email += 3; if (!dmarc.includes('p=none')) email += 2; }
+  if (mx) email += 2;
+
+  // ── Headers score (0–10) ────────────────────────────────────
+  // 7 headers, each = ~1.43 pts
+  const secCount = Object.keys(D.headers).length > 0
+    ? countSecHeaders(D.headers)
+    : 0;
+  const headers = Math.round((secCount / 7) * 10);
+
+  // ── Age score (0–10) ─────────────────────────────────────────
+  // Domain age from RDAP registration date
+  // <1yr=2, 1-2yr=4, 2-4yr=6, 4-8yr=8, >8yr=10, unknown=5
+  let age = 5;
+  if (D.whois) {
+    const ev = (D.whois.events||[]).reduce((a,e)=>{a[e.eventAction]=e.eventDate;return a;},{});
+    const regDate = ev.registration || ev['last changed'];
+    if (regDate) {
+      const years = (Date.now() - new Date(regDate)) / (365.25 * 864e5);
+      if      (years < 1)  age = 2;
+      else if (years < 2)  age = 4;
+      else if (years < 4)  age = 6;
+      else if (years < 8)  age = 8;
+      else                 age = 10;
+    }
+  }
+
+  // ── Risk score (0–10) — inverse of HIGH findings ─────────────
+  // 0 HIGH = 10, 1 HIGH = 7, 2 HIGH = 4, 3+ HIGH = 1
+  const highs = D.findings.filter(f=>f.sev==='HIGH').length;
+  const meds  = D.findings.filter(f=>f.sev==='MEDIUM').length;
+  const risk  = Math.max(1, 10 - highs * 3 - meds * 1);
+
+  // ── Subs score (0–10) — exposure from CT logs ────────────────
+  // More certs/subs = more exposure = LOWER score
+  // 0 subs = 10 (low exposure), many = lower
+  const riskySubs = [...new Set(
+    (D.certs||[]).flatMap(c=>(c.name_value||'').split('\n').map(s=>s.trim()).filter(Boolean))
+  )].filter(s=>/admin|dev|staging|test|vpn|jenkins|gitlab|api|login|auth|ftp|intranet/i.test(s)).length;
+  const subs = Math.max(1, 10 - Math.min(9, riskySubs * 2));
+
+  return [
+    { label: 'SSL',     value: ssl,     desc: `${D.certs.length} certs in CT logs, ${subCount} subdomains` },
+    { label: 'Email',   value: email,   desc: `SPF ${spf?'✓':'✗'} · DMARC ${dmarc?dmarc.includes('p=none')?'p=none':'enforced':'✗'} · MX ${mx?'✓':'✗'}` },
+    { label: 'Headers', value: headers, desc: `${secCount}/7 security headers present` },
+    { label: 'Age',     value: age,     desc: `Domain maturity score from RDAP registration date` },
+    { label: 'Risk',    value: risk,    desc: `${highs} HIGH · ${meds} MEDIUM findings (inverted — higher = fewer issues)` },
+    { label: 'Subs',    value: subs,    desc: `${riskySubs} high-risk subdomains detected (inverted — higher = less exposure)` },
+  ];
+}
+
+function renderRadar() {
+  const wrap = el('radar-wrap');
+  if (!wrap) return;
+
+  const axes  = computeRadarAxes();
+  const score = D.score ?? 100;
+  const { grade } = scoreGrade(score);
+
+  // Colour based on grade
+  const strokeColor = score >= 75 ? '#1D9E75' : score >= 45 ? '#BA7517' : '#A32D2D';
+  const fillColor   = score >= 75 ? '#1D9E75' : score >= 45 ? '#BA7517' : '#A32D2D';
+
+  // SVG radar geometry
+  const cx = 200, cy = 200, R = 155, N = 6;
+  const levels = 5; // concentric rings
+
+  // Angle for each axis (start from top, go clockwise)
+  const angle = i => (Math.PI * 2 * i / N) - Math.PI / 2;
+
+  // Point on a given level ring
+  const pt = (i, frac) => {
+    const a = angle(i);
+    const r = R * frac;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  };
+
+  // Build level rings (hexagons)
+  const levelRings = Array.from({length: levels}, (_, l) => {
+    const frac = (l + 1) / levels;
+    const pts  = Array.from({length: N}, (_, i) => pt(i, frac));
+    return pts.map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+  });
+
+  // Build spoke lines
+  const spokes = Array.from({length: N}, (_, i) => {
+    const [x, y] = pt(i, 1);
+    return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" stroke="currentColor" stroke-width="0.5" opacity="0.15"/>`;
+  }).join('');
+
+  // Build data polygon
+  const dataPoints = axes.map((ax, i) => pt(i, ax.value / 10));
+  const polyPoints = dataPoints.map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+
+  // Build axis labels + value indicators
+  const labelOffset = 26;
+  const axisLabels = axes.map((ax, i) => {
+    const a   = angle(i);
+    const lx  = cx + (R + labelOffset) * Math.cos(a);
+    const ly  = cy + (R + labelOffset) * Math.sin(a);
+    const anchor = Math.abs(Math.cos(a)) < 0.1 ? 'middle' : Math.cos(a) > 0 ? 'start' : 'end';
+
+    // Value score label
+    const vx = cx + (R * (ax.value / 10) + 18) * Math.cos(a);
+    const vy = cy + (R * (ax.value / 10) + 18) * Math.sin(a);
+
+    return `
+      <text x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="${anchor}"
+        font-size="12" font-family="var(--font-mono)" fill="var(--c-muted)" font-weight="500">${ax.label}</text>
+      <text x="${vx.toFixed(1)}" y="${(vy + 4).toFixed(1)}" text-anchor="middle"
+        font-size="10" font-family="var(--font-mono)" fill="${strokeColor}" font-weight="700" opacity="0.85">${ax.value}</text>`;
+  }).join('');
+
+  // Data point dots on polygon
+  const dots = dataPoints.map(([x,y]) =>
+    `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4" fill="${strokeColor}" opacity="0.9"/>`
+  ).join('');
+
+  // Tooltip rows
+  const tooltipRows = axes.map(ax => `
+    <tr>
+      <td style="padding:4px 10px 4px 0;font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--c-text);white-space:nowrap">${ax.label}</td>
+      <td style="padding:4px 0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:${ax.value * 12}px;height:5px;background:${strokeColor};border-radius:3px;transition:width 0.5s ease;flex-shrink:0"></div>
+          <span style="font-family:var(--font-mono);font-size:11px;color:${strokeColor};font-weight:700;min-width:16px">${ax.value}</span>
+          <span style="font-size:11px;color:var(--c-muted)">${ax.desc}</span>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  wrap.innerHTML = `
+    <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+
+      <!-- Radar SVG -->
+      <div style="flex-shrink:0">
+        <svg width="400" height="400" viewBox="0 0 400 400" style="display:block">
+
+          <!-- Level rings -->
+          ${levelRings.map((pts, l) => `
+            <polygon points="${pts}" fill="none" stroke="currentColor" stroke-width="0.5" opacity="${0.1 + l * 0.04}"/>`).join('')}
+
+          <!-- Spokes -->
+          ${spokes}
+
+          <!-- Data polygon fill -->
+          <polygon points="${polyPoints}"
+            fill="${fillColor}" fill-opacity="0.12"
+            stroke="${strokeColor}" stroke-width="2"
+            stroke-linejoin="round"/>
+
+          <!-- Dots at data points -->
+          ${dots}
+
+          <!-- Centre dot -->
+          <circle cx="${cx}" cy="${cy}" r="3" fill="var(--c-muted)" opacity="0.4"/>
+
+          <!-- Axis labels + value scores -->
+          ${axisLabels}
+
+          <!-- Domain label -->
+          <text x="${cx}" y="${cy - 16}" text-anchor="middle"
+            font-size="13" font-family="var(--font-mono)" fill="var(--c-text)" font-weight="700">${D.domain}</text>
+          <text x="${cx}" y="${cy + 2}" text-anchor="middle"
+            font-size="11" font-family="var(--font-mono)" fill="var(--c-hint)">Grade ${grade} · ${score}/100</text>
+        </svg>
+      </div>
+
+      <!-- Axis breakdown table -->
+      <div style="flex:1;min-width:280px;padding-top:8px">
+        <div style="font-size:10px;font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;color:var(--c-hint);margin-bottom:14px">Axis scores (0 – 10)</div>
+        <table style="width:100%;border-collapse:collapse">
+          ${tooltipRows}
+        </table>
+        <div style="margin-top:18px;padding:12px 14px;background:var(--c-surface);border-radius:var(--r-md);border:0.5px solid var(--c-border)">
+          <div style="font-size:10px;font-family:var(--font-mono);letter-spacing:0.1em;text-transform:uppercase;color:var(--c-hint);margin-bottom:6px">Overall score</div>
+          <div style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:${strokeColor}">${grade}</div>
+          <div style="font-size:12px;color:var(--c-muted);margin-top:3px">${score}/100 · ${D.findings.length} issues found</div>
+        </div>
+      </div>
+    </div>`;
+}

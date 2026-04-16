@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ReconView — Compare</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    /* ── Compare-specific overrides ─────────────────── */
+    body { overflow-x: hidden; }
+
+    .cmp-topbar {
+      display: flex; align-items: center; gap: 14px;
+      height: var(--topbar-h); padding: 0 var(--sp-lg);
+      background: var(--c-bg); border-bottom: 0.5px solid var(--c-border);
+      position: sticky; top: 0; z-index: 50;
+    }
+
+    /* Split layout */
+    .cmp-layout {
+      display: grid;
+      grid-template-columns: 1fr 3px 1fr;
+      min-height: calc(100vh - var(--topbar-h));
+    }
+
+    .cmp-divider {
+      background: var(--c-border);
+      position: relative;
+    }
+    .cmp-divider-label {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--c-bg); border: 0.5px solid var(--c-border);
+      border-radius: 20px; padding: 6px 10px;
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--c-hint); white-space: nowrap;
+      writing-mode: vertical-rl;
+      letter-spacing: 0.1em;
+    }
+
+    /* Each pane */
+    .cmp-pane {
+      display: flex; flex-direction: column;
+      min-width: 0;
+    }
+
+    .cmp-pane-header {
+      padding: 14px 18px 12px;
+      border-bottom: 0.5px solid var(--c-border);
+      background: var(--c-surface);
+      position: sticky; top: var(--topbar-h); z-index: 10;
+    }
+
+    .cmp-pane-label {
+      font-size: 9px; font-family: var(--font-mono);
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--c-hint); margin-bottom: 8px;
+    }
+
+    .pane-a .cmp-pane-label { color: #185FA5; }
+    .pane-b .cmp-pane-label { color: #0F6E56; }
+
+    .cmp-input-row { display: flex; gap: 8px; }
+
+    .cmp-input {
+      flex: 1; font-family: var(--font-mono); font-size: 13px;
+      background: var(--c-bg); border: 0.5px solid var(--c-border-em);
+      border-radius: var(--r-md); padding: 8px 12px;
+      color: var(--c-text); outline: none;
+      transition: border-color 0.15s;
+    }
+    .pane-a .cmp-input:focus { border-color: #185FA5; }
+    .pane-b .cmp-input:focus { border-color: var(--accent); }
+
+    .cmp-btn {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      border: none; border-radius: var(--r-md);
+      padding: 8px 16px; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap; letter-spacing: 0.06em;
+    }
+    .cmp-btn:active { transform: scale(0.97); }
+    .cmp-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .pane-a .cmp-btn { background: #185FA5; color: #fff; }
+    .pane-b .cmp-btn { background: var(--accent); color: #fff; }
+
+    .cmp-pane-content { padding: 16px 18px; flex: 1; }
+
+    /* Pane state */
+    .pane-empty {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 260px; gap: 10px; text-align: center;
+      opacity: 0.4;
+    }
+    .pane-empty-title { font-size: 14px; font-weight: 600; }
+    .pane-empty-sub   { font-size: 12px; color: var(--c-muted); max-width: 220px; line-height: 1.5; }
+
+    /* Scan log (compact) */
+    .cmp-scan-log { padding: 8px 0; }
+    .cmp-log-title { font-family: var(--font-mono); font-size: 11px; color: var(--accent); margin-bottom: 10px; }
+    .cmp-log-line  { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-family: var(--font-mono); font-size: 11px; border-bottom: 0.5px solid var(--c-border); }
+    .cmp-log-icon  { width: 14px; text-align: center; flex-shrink: 0; }
+    .cmp-log-text  { color: var(--c-muted); flex: 1; }
+    .cmp-log-status{ font-size: 10px; flex-shrink: 0; }
+    .spin-sm { display:inline-block;width:10px;height:10px;border:1.5px solid var(--c-border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* Score header */
+    .cmp-score-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; background: var(--c-surface);
+      border-radius: var(--r-lg); border: 0.5px solid var(--c-border);
+      margin-bottom: 14px;
+    }
+    .cmp-grade {
+      width: 42px; height: 42px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: 22px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .grade-a, .grade-b { background: #E1F5EE; color: #0F6E56; }
+    .grade-c, .grade-d { background: #FAEEDA; color: #BA7517; }
+    .grade-f            { background: #FCEBEB; color: #A32D2D; }
+    .cmp-domain-name  { font-family: var(--font-mono); font-size: 14px; font-weight: 700; }
+    .cmp-domain-meta  { font-size: 11px; color: var(--c-muted); margin-top: 2px; }
+    .cmp-score-num    { font-family: var(--font-mono); font-size: 11px; color: var(--c-hint); margin-top: 3px; }
+
+    /* Mini metric row */
+    .cmp-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 14px; }
+    .cmp-metric  { background: var(--c-surface); border: 0.5px solid var(--c-border); border-radius: 8px; padding: 9px 10px; }
+    .cmp-metric-label { font-size: 9px; font-family: var(--font-mono); color: var(--c-hint); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 3px; }
+    .cmp-metric-val   { font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+
+    /* Sections */
+    .cmp-section { margin-bottom: 14px; }
+    .cmp-section-title { font-size: 10px; font-family: var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-hint); margin-bottom: 8px; }
+
+    .cmp-finding { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: var(--c-surface); border-radius: 7px; margin-bottom: 5px; border: 0.5px solid var(--c-border); }
+    .cmp-finding-sev { font-size: 9px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 20px; flex-shrink: 0; margin-top: 1px; font-weight: 600; }
+    .cmp-finding-title { font-size: 11px; font-weight: 500; color: var(--c-text); line-height: 1.4; }
+
+    .cmp-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 20px; font-family: var(--font-mono); font-size: 10px; background: var(--c-surface); border: 0.5px solid var(--c-border); color: var(--c-text); margin: 2px; }
+
+    /* ── Comparison panel ────────────────────────────── */
+    .cmp-compare-panel {
+      background: var(--c-bg); border-top: 0.5px solid var(--c-border);
+      padding: 20px 24px;
+    }
+    .cmp-compare-title {
+      font-size: 14px; font-weight: 600; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .cmp-compare-grid { display: flex; flex-direction: column; gap: 8px; }
+
+    .cmp-row {
+      display: grid; grid-template-columns: 160px 1fr 24px 1fr;
+      gap: 8px; align-items: start; padding: 8px 12px;
+      background: var(--c-surface); border-radius: 8px;
+      border: 0.5px solid var(--c-border);
+      font-size: 12px;
+    }
+    .cmp-row.diff { border-color: var(--warn); background: var(--warn-bg); }
+    .cmp-row.diff .cmp-row-label { color: var(--warn); }
+    .cmp-row.match { border-color: var(--accent); }
+
+    .cmp-row-label { font-family: var(--font-mono); font-size: 10px; color: var(--c-hint); text-transform: uppercase; letter-spacing: 0.08em; padding-top: 2px; }
+    .cmp-row-val   { color: var(--c-text); line-height: 1.5; word-break: break-word; }
+    .cmp-row-icon  { text-align: center; font-size: 12px; padding-top: 2px; }
+
+    .diff-badge  { display: inline-block; font-size: 9px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 20px; background: var(--warn-bg); color: var(--warn); border: 0.5px solid var(--warn); }
+    .match-badge { display: inline-block; font-size: 9px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 20px; background: var(--accent-bg); color: var(--accent-dim); border: 0.5px solid var(--accent); }
+
+    .pill { display: inline-block; font-family: var(--font-mono); font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 20px; }
+    .pill-ok  { background: #E1F5EE; color: #0F6E56; }
+    .pill-err { background: #FCEBEB; color: #A32D2D; }
+    .pill-warn{ background: #FAEEDA; color: #BA7517; }
+    .pill-info{ background: #E6F1FB; color: #185FA5; }
+
+    .no-data { font-family: var(--font-mono); font-size: 11px; color: var(--c-hint); padding: 10px 0; text-align: center; }
+
+    /* Score comparison bar */
+    .score-compare {
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      gap: 16px; align-items: center;
+      padding: 16px 20px; background: var(--c-surface);
+      border-radius: var(--r-lg); border: 0.5px solid var(--c-border);
+      margin-bottom: 16px;
+    }
+    .sc-side { text-align: center; }
+    .sc-grade { font-family: var(--font-mono); font-size: 36px; font-weight: 700; }
+    .sc-domain{ font-size: 11px; color: var(--c-muted); margin-top: 2px; font-family: var(--font-mono); }
+    .sc-score { font-size: 11px; color: var(--c-hint); font-family: var(--font-mono); }
+    .sc-vs { font-family: var(--font-mono); font-size: 14px; color: var(--c-hint); font-weight: 700; }
+    .sc-bar-wrap { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+    .sc-bar { height: 6px; border-radius: 3px; transition: width 0.6s ease; flex-shrink: 0; }
+    .sc-bar-a { background: #185FA5; }
+    .sc-bar-b { background: var(--accent); }
+
+    @media (max-width: 900px) {
+      .cmp-layout { grid-template-columns: 1fr; }
+      .cmp-divider { display: none; }
+    }
+
+    /* Both-scan button */
+    .btn-scan-both {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      background: var(--c-surface); color: var(--c-muted);
+      border: 0.5px solid var(--c-border); border-radius: var(--r-md);
+      padding: 6px 14px; cursor: pointer;
+      transition: all 0.15s; letter-spacing: 0.06em;
+      margin-left: auto;
+    }
+    .btn-scan-both:hover { background: var(--c-bg); border-color: var(--c-border-em); color: var(--c-text); }
+  </style>
+</head>
+<body>
+
+<!-- ── Topbar ───────────────────────────────────────────────── -->
+<header class="cmp-topbar">
+  <div class="logo">RECON<span>VIEW</span></div>
+  <div class="topbar-sep"></div>
+  <span class="topbar-label">compare mode</span>
+  <a href="index.html" style="font-family:var(--font-mono);font-size:11px;color:var(--c-muted);text-decoration:none;padding:5px 10px;border:0.5px solid var(--c-border);border-radius:var(--r-md);transition:color 0.15s" onmouseover="this.style.color='var(--c-text)'" onmouseout="this.style.color='var(--c-muted)'">← single view</a>
+  <button class="btn-scan-both" id="bothBtn" onclick="scanBoth()">SCAN BOTH</button>
+  <div class="badge-live" style="margin-left:0"><div class="dot-live"></div>live</div>
+</header>
+
+<!-- ── Split layout ─────────────────────────────────────────── -->
+<div id="mainLayout" class="cmp-layout">
+
+  <!-- ─── PANE A ─────────────────────────────────────────── -->
+  <div class="cmp-pane pane-a" id="paneA">
+    <div class="cmp-pane-header">
+      <div class="cmp-pane-label">Domain A</div>
+      <div class="cmp-input-row">
+        <input class="cmp-input" id="inputA" type="text" placeholder="e.g. github.com" autocomplete="off" autocapitalize="none" spellcheck="false"/>
+        <button class="cmp-btn" id="btnA" onclick="scanPane('A')">SCAN</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <div class="tag" onclick="setInput('A','cloudflare.com')">cloudflare.com</div>
+        <div class="tag" onclick="setInput('A','github.com')">github.com</div>
+        <div class="tag" onclick="setInput('A','up.pt')">up.pt</div>
+      </div>
+    </div>
+    <div class="cmp-pane-content" id="contentA">
+      <div class="pane-empty" id="emptyA">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="15" cy="15" r="9" stroke="currentColor" stroke-width="1.3"/><path d="M21 21l8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <div class="pane-empty-title">Enter domain A</div>
+        <div class="pane-empty-sub">Results will appear here after scanning</div>
+      </div>
+      <div id="scanLogA" style="display:none" class="cmp-scan-log">
+        <div class="cmp-log-title">// scanning <span id="logDomainA"></span></div>
+        <div id="logLinesA"></div>
+      </div>
+      <div id="resultsA" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ─── DIVIDER ───────────────────────────────────────── -->
+  <div class="cmp-divider">
+    <div class="cmp-divider-label">VS</div>
+  </div>
+
+  <!-- ─── PANE B ─────────────────────────────────────────── -->
+  <div class="cmp-pane pane-b" id="paneB">
+    <div class="cmp-pane-header">
+      <div class="cmp-pane-label">Domain B</div>
+      <div class="cmp-input-row">
+        <input class="cmp-input" id="inputB" type="text" placeholder="e.g. gitlab.com" autocomplete="off" autocapitalize="none" spellcheck="false"/>
+        <button class="cmp-btn" id="btnB" onclick="scanPane('B')">SCAN</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <div class="tag" onclick="setInput('B','gitlab.com')">gitlab.com</div>
+        <div class="tag" onclick="setInput('B','nos.pt')">nos.pt</div>
+        <div class="tag" onclick="setInput('B','fc.ul.pt')">fc.ul.pt</div>
+      </div>
+    </div>
+    <div class="cmp-pane-content" id="contentB">
+      <div class="pane-empty" id="emptyB">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="15" cy="15" r="9" stroke="currentColor" stroke-width="1.3"/><path d="M21 21l8 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <div class="pane-empty-title">Enter domain B</div>
+        <div class="pane-empty-sub">Results will appear here after scanning</div>
+      </div>
+      <div id="scanLogB" style="display:none" class="cmp-scan-log">
+        <div class="cmp-log-title">// scanning <span id="logDomainB"></span></div>
+        <div id="logLinesB"></div>
+      </div>
+      <div id="resultsB" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Comparison panel (appears when both done) ──────────── -->
+<div id="comparePanel" style="display:none" class="cmp-compare-panel">
+  <div class="cmp-compare-title">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M10 5l3 3-3 3" stroke="var(--c-text)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Side-by-side comparison
+    <span id="cmpDiffCount" style="font-size:11px;font-family:var(--font-mono);color:var(--c-hint);font-weight:400;margin-left:4px"></span>
+  </div>
+  <div id="compareContent"></div>
+</div>
+
+<script>
+'use strict';
+
+// ── State per pane ────────────────────────────────────────────
+const STATE = {
+  A: { domain:'', ip:null, ipInfo:null, whois:null, dns:{}, certs:[], headers:{}, stack:[], language:null, findings:[], score:null, done:false },
+  B: { domain:'', ip:null, ipInfo:null, whois:null, dns:{}, certs:[], headers:{}, stack:[], language:null, findings:[], score:null, done:false },
+};
+
+// ── Helpers ───────────────────────────────────────────────────
+const el  = id  => document.getElementById(id);
+const esc = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const pill = (t,c) => `<span class="pill ${c}">${esc(t)}</span>`;
+
+// ── Log per pane ──────────────────────────────────────────────
+const paneLogLines = { A:{}, B:{} };
+
+function logAdd(pane, key, text) {
+  const d = document.createElement('div');
+  d.className = 'cmp-log-line'; d.id = `log${pane}${key}`;
+  d.innerHTML = `<div class="cmp-log-icon"><div class="spin-sm"></div></div><div class="cmp-log-text">${esc(text)}</div><div class="cmp-log-status"></div>`;
+  el(`logLines${pane}`).appendChild(d);
+  paneLogLines[pane][key] = d;
+}
+function logDone(pane, key, html='') {
+  const d = paneLogLines[pane][key]; if(!d) return;
+  d.querySelector('.cmp-log-icon').innerHTML  = '<span style="color:var(--accent);font-size:11px">✓</span>';
+  d.querySelector('.cmp-log-status').innerHTML = html;
+}
+function logFail(pane, key, msg='') {
+  const d = paneLogLines[pane][key]; if(!d) return;
+  d.querySelector('.cmp-log-icon').innerHTML  = '<span style="color:var(--danger);font-size:11px">✗</span>';
+  d.querySelector('.cmp-log-text').style.color='var(--danger)';
+  if(msg) d.querySelector('.cmp-log-status').textContent=msg;
+}
+
+// ── Network ───────────────────────────────────────────────────
+const fetchJson = async url => { const r=await fetch(url,{signal:AbortSignal.timeout(12000)}); if(!r.ok) throw new Error(r.status); return r.json(); };
+const fetchText = async url => { const r=await fetch(url,{signal:AbortSignal.timeout(12000)}); if(!r.ok) throw new Error(r.status); return r.text(); };
+
+const DNS_TYPES = {A:1,AAAA:28,MX:15,NS:2,TXT:16,CNAME:5,CAA:257};
+async function fetchAllDNS(domain) {
+  const res={};
+  await Promise.allSettled(Object.keys(DNS_TYPES).map(async t=>{
+    try { const d=await fetchJson(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${DNS_TYPES[t]}`); res[t]=d.Answer||[]; } catch { res[t]=[]; }
+  }));
+  return res;
+}
+const fetchIPInfo  = ip     => fetchJson(`https://ipinfo.io/${ip}/json`);
+const fetchRDAP    = domain => fetchJson(`https://rdap.org/domain/${domain}`);
+const fetchCerts   = domain => fetchJson(`https://crt.sh/?q=%25.${domain}&output=json`);
+const fetchHeaders = domain => fetchText(`https://api.hackertarget.com/httpheaders/?q=https://${domain}`);
+const fetchSource  = domain => fetchText(`https://api.hackertarget.com/pagelinks/?q=https://${domain}`);
+
+function parseHeaders(text) {
+  const h={};
+  for(const line of text.split('\n')){ const i=line.indexOf(':'); if(i>0){const k=line.slice(0,i).trim().toLowerCase(),v=line.slice(i+1).trim(); if(k&&v) h[k]=v;} }
+  return h;
+}
+
+const SEC_HEADERS=['strict-transport-security','content-security-policy','x-frame-options','x-content-type-options','referrer-policy','permissions-policy','x-xss-protection'];
+const countSec = h => SEC_HEADERS.filter(s=>h[s]).length;
+
+// ── Language detection (inline, same logic as app.js) ────────
+const LANG_NAMES={en:'English',pt:'Portuguese',es:'Spanish',fr:'French',de:'German',it:'Italian',nl:'Dutch',pl:'Polish',ru:'Russian',zh:'Chinese',ja:'Japanese',ko:'Korean',ar:'Arabic',tr:'Turkish',sv:'Swedish',da:'Danish',fi:'Finnish',nb:'Norwegian',cs:'Czech',ro:'Romanian',hu:'Hungarian',el:'Greek',uk:'Ukrainian',he:'Hebrew',id:'Indonesian',ms:'Malay',th:'Thai',vi:'Vietnamese',hi:'Hindi',ca:'Catalan',hr:'Croatian',sk:'Slovak',sl:'Slovenian',bg:'Bulgarian',lt:'Lithuanian',lv:'Latvian',et:'Estonian'};
+
+function detectLanguage(headers, html) {
+  const m=new Map();
+  const add=(code,url='')=>{ if(!code||code==='x-default') return; const b=code.toLowerCase().split('-')[0]; const l=LANG_NAMES[b]||code.toUpperCase(); if(!m.has(b)) m.set(b,{label:l,code:b,urls:[]}); if(url) m.get(b).urls.push(url); };
+  (headers['content-language']||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(c=>add(c));
+  const hl=html.match(/<html[^>]+lang=["']([^"']+)["']/i); if(hl) add(hl[1]);
+  const re=/<link[^>]+hreflang=["']([^"']+)["'][^>]*href=["']([^"']+)["'][^>]*>|<link[^>]+href=["']([^"']+)["'][^>]*hreflang=["']([^"']+)["'][^>]*>/gi; let mt;
+  while((mt=re.exec(html))!==null) add(mt[1]||mt[4],mt[2]||mt[3]);
+  const ml=html.match(/<meta[^>]+name=["']language["'][^>]+content=["']([^"']+)["']/i); if(ml) add(ml[1]);
+  const ur=/(en|pt|es|fr|de|it|nl|pl|ru|zh|ja|ko|ar|tr|sv|da|fi|cs|ro|hu|el)\//gi; let mu;
+  while((mu=ur.exec(html))!==null) add(mu[1]);
+  if(!m.size) return null;
+  const all=[...m.values()];
+  const base=hl?hl[1].toLowerCase().split('-')[0]:null;
+  return { primary:(base&&m.has(base))?m.get(base):all[0], all };
+}
+
+// ── Stack detection (abridged ruleset) ───────────────────────
+const STACK_RULES=[
+  {n:'PHP',c:'Language',col:'#7A86B8',f:(h,s)=>h['x-powered-by']?.match(/php/i)?.[0]||s.match(/\.php["'?]/)?.[0]||(h['set-cookie']?.includes('PHPSESS')?'PHPSESSID':null)},
+  {n:'Python',c:'Language',col:'#3572A5',f:(h,s)=>h['x-powered-by']?.match(/python|django|flask/i)?.[0]||h['server']?.match(/gunicorn|uvicorn/i)?.[0]},
+  {n:'Node.js',c:'Language',col:'#5FA04E',f:(h,s)=>h['x-powered-by']?.match(/express|node/i)?.[0]||s.match(/express|next\.js/i)?.[0]},
+  {n:'Java',c:'Language',col:'#B07219',f:(h,s)=>h['x-powered-by']?.match(/servlet|java|spring/i)?.[0]||h['server']?.match(/tomcat|jetty/i)?.[0]},
+  {n:'.NET',c:'Language',col:'#512BD4',f:(h,s)=>h['x-powered-by']?.match(/asp\.net/i)?.[0]||h['x-aspnet-version']},
+  {n:'nginx',c:'Web server',col:'#009900',f:(h)=>h['server']?.match(/nginx/i)?.[0]},
+  {n:'Apache',c:'Web server',col:'#D22128',f:(h)=>h['server']?.match(/apache/i)?.[0]},
+  {n:'IIS',c:'Web server',col:'#0078D4',f:(h)=>h['server']?.match(/microsoft-iis/i)?.[0]},
+  {n:'Cloudflare',c:'CDN',col:'#F48024',f:(h)=>h['cf-ray']||h['server']?.match(/cloudflare/i)?.[0]},
+  {n:'Vercel',c:'CDN',col:'#555',f:(h)=>h['x-vercel-id']},
+  {n:'Netlify',c:'CDN',col:'#00C7B7',f:(h)=>h['x-nf-request-id']},
+  {n:'AWS CloudFront',c:'CDN',col:'#FF9900',f:(h)=>h['x-amz-cf-id']},
+  {n:'WordPress',c:'CMS',col:'#21759B',f:(h,s)=>s.match(/wp-content|wp-includes/i)?.[0]},
+  {n:'Drupal',c:'CMS',col:'#0678BE',f:(h,s)=>h['x-generator']?.match(/drupal/i)?.[0]||s.match(/drupal/i)?.[0]},
+  {n:'Next.js',c:'Framework',col:'#333',f:(h,s)=>h['x-nextjs-cache']||s.match(/_next\/static/)?.[0]},
+  {n:'React',c:'Framework',col:'#61DAFB',f:(h,s)=>s.match(/react-dom/i)?.[0]},
+  {n:'Vue.js',c:'Framework',col:'#4FC08D',f:(h,s)=>s.match(/vue\.min\.js|\/vue@/i)?.[0]},
+  {n:'Shopify',c:'E-commerce',col:'#96BF48',f:(h,s)=>h['x-shopify-stage']||s.match(/cdn\.shopify\.com/i)?.[0]},
+  {n:'Google Analytics',c:'Analytics',col:'#E37400',f:(h,s)=>s.match(/gtag\/js|G-[A-Z0-9]/i)?.[0]},
+  {n:'Google Tag Manager',c:'Analytics',col:'#4285F4',f:(h,s)=>s.match(/GTM-[A-Z0-9]/i)?.[0]},
+  {n:'HubSpot',c:'Marketing',col:'#FF7A59',f:(h,s)=>s.match(/hs-scripts\.com/i)?.[0]},
+];
+function detectStack(h,html){
+  const s=html.slice(0,60000),hits=[];
+  for(const r of STACK_RULES){try{const e=r.f(h,s);if(e)hits.push({name:r.n,category:r.c,color:r.col});}catch{}}
+  return hits;
+}
+
+// ── Score ─────────────────────────────────────────────────────
+function computeScore(findings){
+  let s=100;
+  for(const f of findings){if(f.sev==='HIGH')s-=15;else if(f.sev==='MEDIUM')s-=7;else s-=3;}
+  return Math.max(0,Math.min(100,s));
+}
+function gradeOf(s){if(s>=90)return'A';if(s>=75)return'B';if(s>=55)return'C';if(s>=35)return'D';return'F';}
+function gradeClass(g){return 'grade-'+g.toLowerCase();}
+
+// ── Findings engine ───────────────────────────────────────────
+function generateFindings(D){
+  const finds=[], add=(sev,title)=>finds.push({sev,title});
+  const txt=(D.dns.TXT||[]).map(r=>r.data||'');
+  const dmarc=txt.find(t=>t.includes('v=DMARC1'));
+  if(!dmarc) add('HIGH','No DMARC record');
+  else if(dmarc.includes('p=none')) add('MEDIUM','DMARC p=none (not enforced)');
+  const spf=txt.find(t=>t.startsWith('v=spf1'));
+  if(!spf) add('HIGH','No SPF record');
+  else if(spf.includes('+all')) add('HIGH','SPF uses +all');
+  if(!D.dns.CAA?.length) add('MEDIUM','No CAA record');
+  if(D.dns.A?.length&&!D.dns.AAAA?.length) add('LOW','No IPv6 (AAAA)');
+  if(Object.keys(D.headers).length){
+    if(!D.headers['strict-transport-security']) add('HIGH','Missing HSTS');
+    if(!D.headers['content-security-policy'])   add('MEDIUM','Missing CSP');
+    if(!D.headers['x-frame-options']&&!D.headers['content-security-policy']?.includes('frame-ancestors')) add('MEDIUM','Missing X-Frame-Options');
+    if(!D.headers['x-content-type-options'])    add('LOW','Missing X-Content-Type-Options');
+    if(!D.headers['referrer-policy'])            add('LOW','Missing Referrer-Policy');
+    if(D.headers['server']?.length>4)           add('LOW',`Server header exposed: ${D.headers['server']}`);
+    if(D.headers['x-powered-by'])               add('LOW',`X-Powered-By: ${D.headers['x-powered-by']}`);
+  }
+  finds.sort((a,b)=>({HIGH:0,MEDIUM:1,LOW:2}[a.sev]-{HIGH:0,MEDIUM:1,LOW:2}[b.sev]));
+  return finds;
+}
+
+// ── Input helpers ─────────────────────────────────────────────
+function setInput(pane, val){ el(`input${pane}`).value=val; }
+function cleanDomain(raw){ return raw.replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/^www\./,'').trim().toLowerCase(); }
+
+// ── Scan pane ─────────────────────────────────────────────────
+async function scanPane(pane) {
+  const raw = el(`input${pane}`).value.trim();
+  if(!raw) { el(`input${pane}`).focus(); return; }
+  const domain = cleanDomain(raw);
+  if(!domain) return;
+  el(`input${pane}`).value = domain;
+
+  const D = STATE[pane];
+  Object.assign(D, {domain,ip:null,ipInfo:null,whois:null,dns:{},certs:[],headers:{},stack:[],language:null,findings:[],score:null,done:false});
+
+  // Reset UI
+  el(`empty${pane}`).style.display    = 'none';
+  el(`results${pane}`).style.display  = 'none';
+  el(`scanLog${pane}`).style.display  = '';
+  el(`logLines${pane}`).innerHTML     = '';
+  el(`logDomain${pane}`).textContent  = domain;
+  paneLogLines[pane] = {};
+  el(`btn${pane}`).disabled = true;
+  el(`btn${pane}`).textContent = '…';
+  el('comparePanel').style.display = 'none';
+
+  // DNS
+  logAdd(pane,'dns','DNS records…');
+  try { D.dns=await fetchAllDNS(domain); const c=Object.values(D.dns).flat().length; logDone(pane,'dns',pill(c+'','pill-ok')); }
+  catch { logFail(pane,'dns','failed'); D.dns={}; }
+
+  // IP
+  logAdd(pane,'ip','IP & geolocation…');
+  try {
+    D.ip=(D.dns.A||[])[0]?.data||null;
+    if(D.ip){
+      logDone(pane,'ip',`<span style="font-family:var(--font-mono);font-size:10px;color:var(--accent)">${D.ip}</span>`);
+      try { D.ipInfo=await fetchIPInfo(D.ip); }catch{}
+    } else logFail(pane,'ip','no A record');
+  } catch { logFail(pane,'ip','failed'); }
+
+  // RDAP
+  logAdd(pane,'rdap','WHOIS/RDAP…');
+  try { D.whois=await fetchRDAP(domain); logDone(pane,'rdap',pill('ok','pill-ok')); }
+  catch { logFail(pane,'rdap','N/A'); }
+
+  // Certs
+  logAdd(pane,'crt','Certificate transparency…');
+  try {
+    const raw=await fetchCerts(domain); const seen=new Set();
+    D.certs=raw.filter(c=>{const k=c.name_value;if(seen.has(k))return false;seen.add(k);return true;});
+    logDone(pane,'crt',pill(D.certs.length+'','pill-ok'));
+  } catch { logFail(pane,'crt','N/A'); D.certs=[]; }
+
+  // Headers
+  logAdd(pane,'hdr','HTTP headers…');
+  try {
+    D.headers=parseHeaders(await fetchHeaders(domain));
+    logDone(pane,'hdr',pill(countSec(D.headers)+'/7','pill-info'));
+  } catch { logFail(pane,'hdr','blocked'); D.headers={}; }
+
+  // Source → stack + language
+  logAdd(pane,'src','Tech & language detection…');
+  try {
+    const src=await fetchSource(domain);
+    D.stack=detectStack(D.headers,src);
+    D.language=detectLanguage(D.headers,src);
+    logDone(pane,'src',pill(D.stack.length+' tech','pill-ok'));
+  } catch { logFail(pane,'src','blocked'); D.stack=[]; }
+
+  // Findings
+  D.findings=generateFindings(D);
+  D.score=computeScore(D.findings);
+  D.done=true;
+
+  // Render pane
+  renderPaneResults(pane);
+  el(`scanLog${pane}`).style.display = 'none';
+  el(`results${pane}`).style.display = '';
+  el(`btn${pane}`).disabled = false;
+  el(`btn${pane}`).textContent = 'RESCAN';
+
+  // If both done → compare
+  if(STATE.A.done && STATE.B.done) renderComparison();
+}
+
+function scanBoth(){
+  const a=cleanDomain(el('inputA').value.trim());
+  const b=cleanDomain(el('inputB').value.trim());
+  if(a) scanPane('A');
+  if(b) scanPane('B');
+}
+
+// ── Render pane results ───────────────────────────────────────
+function renderPaneResults(pane) {
+  const D  = STATE[pane];
+  const wrap = el(`results${pane}`);
+  const sev  = {HIGH:'sev-high',MEDIUM:'sev-med',LOW:'sev-low'};
+  const grade = gradeOf(D.score);
+  const flag  = D.ipInfo?.country ? String.fromCodePoint(...[...D.ipInfo.country.toUpperCase()].map(c=>0x1F1E6+c.charCodeAt(0)-65)) : '';
+  const subCount = new Set((D.certs||[]).flatMap(c=>(c.name_value||'').split('\n').map(s=>s.trim()))).size;
+  const hl = D.findings.filter(f=>f.sev==='HIGH').length;
+  const ml = D.findings.filter(f=>f.sev==='MEDIUM').length;
+  const ll = D.findings.filter(f=>f.sev==='LOW').length;
+
+  wrap.innerHTML = `
+    <!-- Score header -->
+    <div class="cmp-score-bar">
+      <div class="cmp-grade ${gradeClass(grade)}">${grade}</div>
+      <div style="flex:1;min-width:0">
+        <div class="cmp-domain-name">${esc(D.domain)}</div>
+        <div class="cmp-domain-meta">${esc(D.ip||'')}${D.ipInfo?.org?' · '+D.ipInfo.org:''}</div>
+        <div class="cmp-score-num">${D.score}/100 · ${D.findings.length} issues</div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="cmp-metrics">
+      <div class="cmp-metric"><div class="cmp-metric-label">DNS</div><div class="cmp-metric-val">${Object.values(D.dns).flat().length}</div></div>
+      <div class="cmp-metric"><div class="cmp-metric-label">Subdomains</div><div class="cmp-metric-val">${subCount}</div></div>
+      <div class="cmp-metric"><div class="cmp-metric-label">Sec headers</div><div class="cmp-metric-val" style="color:${countSec(D.headers)<3?'var(--danger)':countSec(D.headers)<5?'var(--warn)':'var(--accent)'}">${countSec(D.headers)}/7</div></div>
+      <div class="cmp-metric"><div class="cmp-metric-label">Tech</div><div class="cmp-metric-val">${D.stack.length}</div></div>
+      <div class="cmp-metric"><div class="cmp-metric-label">Languages</div><div class="cmp-metric-val">${D.language?.all?.length||'?'}</div></div>
+      <div class="cmp-metric"><div class="cmp-metric-label">Findings</div><div class="cmp-metric-val" style="color:${hl>0?'var(--danger)':ml>0?'var(--warn)':'var(--accent)'}">${D.findings.length}</div></div>
+    </div>
+
+    <!-- Location -->
+    ${D.ipInfo?.country ? `<div class="cmp-section"><div class="cmp-section-title">Location</div><div style="font-size:12px;color:var(--c-muted)">${flag} ${esc([D.ipInfo.city,D.ipInfo.region,D.ipInfo.country].filter(Boolean).join(', '))} · ${esc(D.ipInfo.org||'')}</div></div>` : ''}
+
+    <!-- Language -->
+    ${D.language ? `<div class="cmp-section"><div class="cmp-section-title">Language${D.language.all.length>1?'s':''}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${D.language.all.map(l=>`<span class="cmp-chip">🌐 ${esc(l.label)} <span style="color:var(--c-hint)">${esc(l.code)}</span></span>`).join('')}</div></div>` : ''}
+
+    <!-- Tech stack -->
+    ${D.stack.length ? `<div class="cmp-section"><div class="cmp-section-title">Tech stack</div><div style="display:flex;flex-wrap:wrap;gap:4px">${D.stack.map(t=>`<span class="cmp-chip"><span style="width:7px;height:7px;border-radius:50%;background:${esc(t.color)};display:inline-block;flex-shrink:0"></span>${esc(t.name)}</span>`).join('')}</div></div>` : ''}
+
+    <!-- Findings -->
+    <div class="cmp-section">
+      <div class="cmp-section-title">Findings (${D.findings.length})</div>
+      ${D.findings.slice(0,6).map(f=>`
+        <div class="cmp-finding">
+          <span class="cmp-finding-sev ${sev[f.sev]||''}">${esc(f.sev)}</span>
+          <span class="cmp-finding-title">${esc(f.title)}</span>
+        </div>`).join('')}
+      ${D.findings.length===0?'<div class="no-data">No issues found ✓</div>':''}
+      ${D.findings.length>6?`<div style="font-size:11px;color:var(--c-hint);padding:4px 0;font-family:var(--font-mono)">+${D.findings.length-6} more</div>`:''}
+    </div>`;
+}
+
+// ── Render comparison ─────────────────────────────────────────
+function renderComparison() {
+  const A = STATE.A, B = STATE.B;
+  const panel = el('comparePanel');
+  panel.style.display = '';
+
+  const gradeA = gradeOf(A.score), gradeB = gradeOf(B.score);
+  const maxScore = 100;
+  const barW = 120;
+
+  // Count differences
+  let diffs = 0;
+
+  // Helper: compare two values
+  const cmpRow = (label, valA, valB, isDiff, htmlA, htmlB) => {
+    if(isDiff) diffs++;
+    return `<div class="cmp-row ${isDiff?'diff':'match'}">
+      <div class="cmp-row-label">${esc(label)}</div>
+      <div class="cmp-row-val">${htmlA||esc(valA||'—')}</div>
+      <div class="cmp-row-icon">${isDiff?'<span style="color:var(--warn)">≠</span>':'<span style="color:var(--accent)">≈</span>'}</div>
+      <div class="cmp-row-val">${htmlB||esc(valB||'—')}</div>
+    </div>`;
+  };
+
+  // Hosting
+  const orgA = A.ipInfo?.org||'—', orgB = B.ipInfo?.org||'—';
+  const countryA = A.ipInfo?.country||'—', countryB = B.ipInfo?.country||'—';
+
+  // Email sec
+  const txtA = (A.dns.TXT||[]).map(r=>r.data||''), txtB = (B.dns.TXT||[]).map(r=>r.data||'');
+  const spfA = !!txtA.find(t=>t.startsWith('v=spf1')), spfB = !!txtB.find(t=>t.startsWith('v=spf1'));
+  const dmarcA = txtA.find(t=>t.includes('v=DMARC1')), dmarcB = txtB.find(t=>t.includes('v=DMARC1'));
+  const dmarcPillA = !dmarcA?pill('missing','pill-err'):dmarcA.includes('p=none')?pill('p=none','pill-warn'):pill('enforced','pill-ok');
+  const dmarcPillB = !dmarcB?pill('missing','pill-err'):dmarcB.includes('p=none')?pill('p=none','pill-warn'):pill('enforced','pill-ok');
+  const hstA = !!A.headers['strict-transport-security'], hstB = !!B.headers['strict-transport-security'];
+  const cspA = !!A.headers['content-security-policy'], cspB = !!B.headers['content-security-policy'];
+
+  // Language
+  const langA = A.language?.all?.map(l=>l.label).join(', ')||'—';
+  const langB = B.language?.all?.map(l=>l.label).join(', ')||'—';
+
+  // Stack overlap
+  const namesA = new Set(A.stack.map(t=>t.name)), namesB = new Set(B.stack.map(t=>t.name));
+  const shared  = [...namesA].filter(n=>namesB.has(n));
+  const onlyA   = [...namesA].filter(n=>!namesB.has(n));
+  const onlyB   = [...namesB].filter(n=>!namesA.has(n));
+
+  // Subdomains
+  const subA = new Set((A.certs||[]).flatMap(c=>(c.name_value||'').split('\n').map(s=>s.trim()))).size;
+  const subB = new Set((B.certs||[]).flatMap(c=>(c.name_value||'').split('\n').map(s=>s.trim()))).size;
+
+  const rows = [
+    cmpRow('Security score', A.score, B.score, A.score!==B.score,
+      `<span style="font-family:var(--font-mono);font-weight:700;font-size:13px">${A.score}/100 (${gradeA})</span>`,
+      `<span style="font-family:var(--font-mono);font-weight:700;font-size:13px">${B.score}/100 (${gradeB})</span>`),
+    cmpRow('Findings total', A.findings.length, B.findings.length, A.findings.length!==B.findings.length,
+      `<span style="color:var(--${A.findings.filter(f=>f.sev==='HIGH').length>0?'danger':'c-text'})">${A.findings.length} issues</span>`,
+      `<span style="color:var(--${B.findings.filter(f=>f.sev==='HIGH').length>0?'danger':'c-text'})">${B.findings.length} issues</span>`),
+    cmpRow('Hosting / ASN', orgA, orgB, orgA!==orgB, null, null),
+    cmpRow('Country', countryA, countryB, countryA!==countryB, null, null),
+    cmpRow('SPF', spfA?'present':'missing', spfB?'present':'missing', spfA!==spfB,
+      spfA?pill('present','pill-ok'):pill('missing','pill-err'),
+      spfB?pill('present','pill-ok'):pill('missing','pill-err')),
+    cmpRow('DMARC', dmarcA||'missing', dmarcB||'missing', !!dmarcA!==!!dmarcB || (!!dmarcA&&!!dmarcB&&dmarcA.includes('p=none')!==dmarcB.includes('p=none')), dmarcPillA, dmarcPillB),
+    cmpRow('HSTS', hstA?'present':'missing', hstB?'present':'missing', hstA!==hstB,
+      hstA?pill('present','pill-ok'):pill('missing','pill-err'),
+      hstB?pill('present','pill-ok'):pill('missing','pill-err')),
+    cmpRow('CSP', cspA?'present':'missing', cspB?'present':'missing', cspA!==cspB,
+      cspA?pill('present','pill-ok'):pill('missing','pill-err'),
+      cspB?pill('present','pill-ok'):pill('missing','pill-err')),
+    cmpRow('Sec headers', countSec(A.headers)+'/7', countSec(B.headers)+'/7', countSec(A.headers)!==countSec(B.headers),
+      pill(countSec(A.headers)+'/7', countSec(A.headers)>=4?'pill-ok':countSec(A.headers)>=2?'pill-warn':'pill-err'),
+      pill(countSec(B.headers)+'/7', countSec(B.headers)>=4?'pill-ok':countSec(B.headers)>=2?'pill-warn':'pill-err')),
+    cmpRow('Subdomains', subA, subB, subA!==subB, null, null),
+    cmpRow('Language(s)', langA, langB, langA!==langB, null, null),
+    cmpRow('Tech stack count', A.stack.length, B.stack.length, A.stack.length!==B.stack.length, null, null),
+  ];
+
+  el('cmpDiffCount').textContent = `· ${diffs} difference${diffs!==1?'s':''}`;
+
+  const stackSection = `
+    <div style="margin-top:16px;padding:14px;background:var(--c-surface);border-radius:var(--r-lg);border:0.5px solid var(--c-border)">
+      <div style="font-size:10px;font-family:var(--font-mono);letter-spacing:0.12em;text-transform:uppercase;color:var(--c-hint);margin-bottom:10px">Tech stack overlap</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start">
+        <div>
+          <div style="font-size:10px;color:var(--c-hint);margin-bottom:6px;font-family:var(--font-mono)">Only in ${esc(A.domain)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">${onlyA.length?onlyA.map(n=>`<span class="cmp-chip">${esc(n)}</span>`).join(''):'<span style="font-size:11px;color:var(--c-hint)">—</span>'}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--c-hint);margin-bottom:6px;font-family:var(--font-mono)">Shared</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center">${shared.length?shared.map(n=>`<span class="cmp-chip" style="border-color:var(--accent)">${esc(n)}</span>`).join(''):'<span style="font-size:11px;color:var(--c-hint)">none</span>'}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--c-hint);margin-bottom:6px;font-family:var(--font-mono)">Only in ${esc(B.domain)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">${onlyB.length?onlyB.map(n=>`<span class="cmp-chip">${esc(n)}</span>`).join(''):'<span style="font-size:11px;color:var(--c-hint)">—</span>'}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // Score visual bar
+  const scoreBar = `
+    <div class="score-compare">
+      <div class="sc-side">
+        <div class="sc-grade" style="color:${A.score>=75?'var(--accent)':A.score>=45?'var(--warn)':'var(--danger)'}">${gradeA}</div>
+        <div class="sc-domain">${esc(A.domain)}</div>
+        <div class="sc-score">${A.score}/100</div>
+        <div class="sc-bar-wrap">
+          <div class="sc-bar sc-bar-a" style="width:${Math.round(A.score/maxScore*barW)}px"></div>
+          <span style="font-size:10px;color:var(--c-hint);font-family:var(--font-mono)">${A.score}</span>
+        </div>
+      </div>
+      <div class="sc-vs">VS</div>
+      <div class="sc-side">
+        <div class="sc-grade" style="color:${B.score>=75?'var(--accent)':B.score>=45?'var(--warn)':'var(--danger)'}">${gradeB}</div>
+        <div class="sc-domain">${esc(B.domain)}</div>
+        <div class="sc-score">${B.score}/100</div>
+        <div class="sc-bar-wrap" style="justify-content:flex-end">
+          <span style="font-size:10px;color:var(--c-hint);font-family:var(--font-mono)">${B.score}</span>
+          <div class="sc-bar sc-bar-b" style="width:${Math.round(B.score/maxScore*barW)}px"></div>
+        </div>
+      </div>
+    </div>`;
+
+  el('compareContent').innerHTML = scoreBar + `<div class="cmp-compare-grid">${rows.join('')}</div>` + stackSection;
+  panel.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  el('inputA').addEventListener('keydown', e => { if(e.key==='Enter') scanPane('A'); });
+  el('inputB').addEventListener('keydown', e => { if(e.key==='Enter') scanPane('B'); });
+});
+</script>
+</body>
+</html>
