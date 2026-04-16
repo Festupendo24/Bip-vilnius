@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ReconView — Domain OSINT Checker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    /* ── Dashboard ────────────────────────────────── */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 180px 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 12px;
+    }
+    .db-full-width { grid-column: 1 / -1; }
+    .db-card {
+      background: var(--c-bg);
+      border: 0.5px solid var(--c-border);
+      border-radius: var(--r-lg);
+      padding: 16px;
+    }
+    .db-score-card {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; text-align: center;
+    }
+    .db-score-label { font-size: 11px; color: var(--c-hint); text-transform: uppercase; letter-spacing: 0.1em; font-family: var(--font-mono); }
+    .db-score-sub   { font-family: var(--font-mono); font-size: 12px; color: var(--c-muted); }
+    .db-card-title  { font-size: 11px; font-weight: 600; color: var(--c-hint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; font-family: var(--font-mono); }
+    .db-finding-bars { display: flex; flex-direction: column; gap: 10px; }
+    .db-bar-row  { display: flex; align-items: center; gap: 10px; }
+    .db-bar-label{ font-family: var(--font-mono); font-size: 10px; color: var(--c-hint); width: 52px; flex-shrink: 0; }
+    .db-bar-track{ flex: 1; height: 6px; background: var(--c-border); border-radius: 3px; overflow: hidden; }
+    .db-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+    .db-bar-count{ font-family: var(--font-mono); font-size: 13px; font-weight: 700; width: 24px; text-align: right; flex-shrink: 0; }
+    .db-top-finding { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 0.5px solid var(--c-border); }
+    .db-recs { display: flex; flex-direction: column; gap: 8px; }
+    .db-rec-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; background: var(--c-surface); border-radius: 8px; }
+    .db-rec-num  { width: 22px; height: 22px; border-radius: 50%; background: var(--c-bg); border: 0.5px solid var(--c-border); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--c-muted); flex-shrink: 0; margin-top: 1px; }
+    .db-rec-title  { font-size: 13px; font-weight: 600; color: var(--c-text); }
+    .db-rec-detail { font-size: 12px; color: var(--c-muted); margin-top: 3px; line-height: 1.55; }
+
+    /* ── Attack Surface Map ───────────────────────── */
+    .atk-map { display: flex; flex-direction: column; gap: 0; }
+    .atk-root { display: flex; justify-content: center; padding: 20px 0 0; margin-bottom: 0; }
+    .atk-root-inner {
+      padding: 14px 24px; background: var(--c-bg);
+      border: 1.5px solid var(--accent); border-radius: var(--r-lg);
+      text-align: center; min-width: 200px;
+      position: relative;
+    }
+    .atk-root-inner::after {
+      content: ''; position: absolute; left: 50%; bottom: -20px;
+      width: 1px; height: 20px; background: var(--c-border-em);
+    }
+    .atk-sections { display: flex; flex-direction: column; gap: 0; padding-top: 20px; border-left: 1px solid var(--c-border); margin-left: 24px; padding-left: 24px; }
+    .atk-section { padding: 12px 0; border-bottom: 0.5px solid var(--c-border); }
+    .atk-section:last-child { border-bottom: none; }
+    .atk-section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .atk-section-title { font-size: 12px; font-weight: 600; color: var(--c-text); }
+    .atk-items { display: flex; flex-wrap: wrap; gap: 0; }
+
+    /* ── Metrics 6-col ────────────────────────────── */
+    .metrics-row-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+
+    @media (max-width: 1000px) { .dashboard-grid { grid-template-columns: 1fr 1fr; } .db-score-card { grid-column: 1 / -1; flex-direction: row; gap: 20px; } }
+    @media (max-width: 640px)  { .dashboard-grid { grid-template-columns: 1fr; } .db-score-card { flex-direction: column; } .metrics-row-6 { grid-template-columns: repeat(3,1fr); } }
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">RECON<span>VIEW</span></div>
+  <div class="topbar-sep"></div>
+  <span class="topbar-label">domain intelligence</span>
+  <div class="badge-live"><div class="dot-live"></div>live APIs</div>
+</header>
+
+<section class="search-section">
+  <div class="search-label">target domain</div>
+  <div class="search-row">
+    <input class="search-input" type="text" id="domainInput" placeholder="e.g. example.com" autocomplete="off" autocapitalize="none" spellcheck="false"/>
+    <button class="btn-scan" id="scanBtn" onclick="startScan()">SCAN</button>
+  </div>
+  <div class="scan-tags">
+    <span class="scan-tags-label">try:</span>
+    <div class="tag" onclick="quickScan('cloudflare.com')">cloudflare.com</div>
+    <div class="tag" onclick="quickScan('github.com')">github.com</div>
+    <div class="tag" onclick="quickScan('up.pt')">up.pt</div>
+    <div class="tag" onclick="quickScan('fc.ul.pt')">fc.ul.pt</div>
+    <div class="tag" onclick="quickScan('nos.pt')">nos.pt</div>
+  </div>
+</section>
+
+<div class="main-grid">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">modules</div>
+
+      <div class="module-item active" id="mod-dashboard" onclick="gotoTab('dashboard')">
+        <div class="module-icon green">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke="#1D9E75" stroke-width="1.2"/><rect x="8" y="1" width="5" height="5" rx="1" stroke="#1D9E75" stroke-width="1.2"/><rect x="1" y="8" width="5" height="5" rx="1" stroke="#1D9E75" stroke-width="1.2"/><rect x="8" y="8" width="5" height="5" rx="1" stroke="#1D9E75" stroke-width="1.2"/></svg>
+        </div>
+        <div><div class="module-name">Dashboard</div><div class="module-desc">Score &amp; summary</div></div>
+        <div class="module-status s-idle" id="badge-dashboard">—</div>
+      </div>
+
+      <div class="module-item" id="mod-attack" onclick="gotoTab('attack')">
+        <div class="module-icon red">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#A32D2D" stroke-width="1.2"/><circle cx="7" cy="7" r="2.5" stroke="#A32D2D" stroke-width="1.2"/><circle cx="7" cy="7" r="0.8" fill="#A32D2D"/></svg>
+        </div>
+        <div><div class="module-name">Attack surface</div><div class="module-desc">Full exposure map</div></div>
+        <div class="module-status s-idle" id="badge-attack">—</div>
+      </div>
+
+      <div class="module-item" id="mod-overview" onclick="gotoTab('overview')">
+        <div class="module-icon green">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#1D9E75" stroke-width="1.2"/><circle cx="7" cy="7" r="2" fill="#1D9E75"/></svg>
+        </div>
+        <div><div class="module-name">Overview</div><div class="module-desc">IP &amp; WHOIS</div></div>
+        <div class="module-status s-idle" id="badge-overview">—</div>
+      </div>
+
+      <div class="module-item" id="mod-dns" onclick="gotoTab('dns')">
+        <div class="module-icon blue">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 4h12M1 7h7M1 10h5" stroke="#185FA5" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="module-name">DNS Records</div><div class="module-desc">A, MX, TXT, NS…</div></div>
+        <div class="module-status s-idle" id="badge-dns">—</div>
+      </div>
+
+      <div class="module-item" id="mod-ssl" onclick="gotoTab('ssl')">
+        <div class="module-icon green">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="5" width="10" height="8" rx="1.5" stroke="#1D9E75" stroke-width="1.2"/><path d="M4.5 5V3.5a2.5 2.5 0 015 0V5" stroke="#1D9E75" stroke-width="1.2"/></svg>
+        </div>
+        <div><div class="module-name">SSL / Subdomains</div><div class="module-desc">crt.sh CT logs</div></div>
+        <div class="module-status s-idle" id="badge-ssl">—</div>
+      </div>
+
+      <div class="module-item" id="mod-web" onclick="gotoTab('web')">
+        <div class="module-icon blue">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="9" rx="1.5" stroke="#185FA5" stroke-width="1.2"/><circle cx="4" cy="5.5" r="1" fill="#185FA5"/><circle cx="7" cy="5.5" r="1" fill="#185FA5"/><path d="M2 8h10" stroke="#185FA5" stroke-width="1" stroke-linecap="round" opacity="0.5"/></svg>
+        </div>
+        <div><div class="module-name">Tech Stack</div><div class="module-desc">Languages &amp; frameworks</div></div>
+        <div class="module-status s-idle" id="badge-web">—</div>
+      </div>
+
+      <div class="module-item" id="mod-lang" onclick="gotoTab('lang')">
+        <div class="module-icon amber">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#BA7517" stroke-width="1.2"/><path d="M7 1.5C5.5 3 4.5 5 4.5 7s1 4 2.5 5.5" stroke="#BA7517" stroke-width="1.2" stroke-linecap="round"/><path d="M7 1.5C8.5 3 9.5 5 9.5 7s-1 4-2.5 5.5" stroke="#BA7517" stroke-width="1.2" stroke-linecap="round"/><path d="M1.5 7h11" stroke="#BA7517" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="module-name">Language</div><div class="module-desc">Site language &amp; i18n</div></div>
+        <div class="module-status s-idle" id="badge-lang">—</div>
+      </div>
+
+      <div class="module-item" id="mod-headers" onclick="gotoTab('headers')">
+        <div class="module-icon amber">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="10" rx="1.5" stroke="#BA7517" stroke-width="1.2"/><path d="M1 5h12" stroke="#BA7517" stroke-width="1.2"/></svg>
+        </div>
+        <div><div class="module-name">HTTP Headers</div><div class="module-desc">Security headers</div></div>
+        <div class="module-status s-idle" id="badge-headers">—</div>
+      </div>
+
+      <div class="module-item" id="mod-findings" onclick="gotoTab('findings')">
+        <div class="module-icon red">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2L12.5 11H1.5L7 2Z" stroke="#A32D2D" stroke-width="1.2" stroke-linejoin="round"/><path d="M7 5.5v3M7 10h.01" stroke="#A32D2D" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div><div class="module-name">Findings</div><div class="module-desc">Security issues</div></div>
+        <div class="module-status s-idle" id="badge-findings">—</div>
+      </div>
+    </div>
+
+    <div style="padding:0 14px">
+      <div class="sidebar-title">data sources</div>
+      <div class="source-row"><span>dns.google</span>   <span class="source-tag">free</span></div>
+      <div class="source-row"><span>ipinfo.io</span>    <span class="source-tag">free</span></div>
+      <div class="source-row"><span>rdap.org</span>     <span class="source-tag">free</span></div>
+      <div class="source-row"><span>crt.sh</span>       <span class="source-tag">free</span></div>
+      <div class="source-row"><span>hackertarget</span> <span class="source-tag">free</span></div>
+    </div>
+  </aside>
+
+  <main class="content" id="mainContent">
+
+    <!-- Empty -->
+    <div id="state-empty" class="empty-state">
+      <svg class="empty-icon" width="56" height="56" viewBox="0 0 56 56" fill="none">
+        <circle cx="24" cy="24" r="15" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M35 35l13 13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M18 24h12M24 18v12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      <div class="empty-title">Enter a domain to begin reconnaissance</div>
+      <div class="empty-sub">Queries real public APIs — dns.google, ipinfo.io, rdap.org, crt.sh, hackertarget — no keys required. Detects tech stack, language, subdomains, and security issues.</div>
+    </div>
+
+    <!-- Scanning -->
+    <div id="state-scanning" style="display:none">
+      <div class="scan-log">
+        <div class="scan-log-title">// scanning <span id="log-domain"></span></div>
+        <div id="log-lines"></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="state-results" style="display:none">
+
+      <div class="target-header">
+        <div class="target-icon">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="1" y="2" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.3" opacity="0.5"/><path d="M7 20h8M11 16v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity="0.5"/></svg>
+        </div>
+        <div>
+          <div class="target-domain" id="r-domain"></div>
+          <div class="target-meta"  id="r-meta"></div>
+        </div>
+        <div class="risk-badge" id="r-risk-badge"></div>
+      </div>
+
+      <!-- 6 metric cards -->
+      <div class="metrics-row-6">
+        <div class="metric-card"><div class="metric-label">DNS Records</div><div class="metric-value" id="m-dns">—</div><div class="metric-sub">all types</div></div>
+        <div class="metric-card"><div class="metric-label">Subdomains</div><div class="metric-value" id="m-subs">—</div><div class="metric-sub">from crt.sh</div></div>
+        <div class="metric-card"><div class="metric-label">Tech Stack</div><div class="metric-value" id="m-stack">—</div><div class="metric-sub" id="m-stack-sub">technologies</div></div>
+        <div class="metric-card"><div class="metric-label">Languages</div><div class="metric-value" id="m-lang">—</div><div class="metric-sub" id="m-lang-sub">detected</div></div>
+        <div class="metric-card"><div class="metric-label">Sec. Headers</div><div class="metric-value" id="m-headers">—</div><div class="metric-sub">present / 7</div></div>
+        <div class="metric-card"><div class="metric-label">Findings</div><div class="metric-value" id="m-findings">—</div><div class="metric-sub" id="m-findings-sub">issues</div></div>
+      </div>
+
+      <!-- Tabs -->
+      <nav class="tabs">
+        <button class="tab active" onclick="switchTab('dashboard',this)">Dashboard</button>
+        <button class="tab"        onclick="switchTab('attack',this)">Attack surface</button>
+        <button class="tab"        onclick="switchTab('overview',this)">Overview</button>
+        <button class="tab"        onclick="switchTab('dns',this)">DNS</button>
+        <button class="tab"        onclick="switchTab('ssl',this)">SSL / Subdomains</button>
+        <button class="tab"        onclick="switchTab('web',this)">Tech Stack</button>
+        <button class="tab"        onclick="switchTab('lang',this)">Language</button>
+        <button class="tab"        onclick="switchTab('headers',this)">Headers</button>
+        <button class="tab"        onclick="switchTab('findings',this)">Findings</button>
+      </nav>
+
+      <!-- DASHBOARD -->
+      <div id="tab-dashboard" class="tab-panel active">
+        <div id="dashboard-wrap"></div>
+      </div>
+
+      <!-- ATTACK SURFACE -->
+      <div id="tab-attack" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head">
+            <div class="section-head-title">Attack surface map</div>
+            <div class="section-head-badge">full exposure</div>
+          </div>
+          <div class="section-body">
+            <div id="attack-wrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OVERVIEW -->
+      <div id="tab-overview" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">IP &amp; network information</div><div class="section-head-badge">ipinfo.io</div></div>
+          <div class="section-body"><table class="meta-table" id="tbl-ip"></table></div>
+        </div>
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">Domain registration (WHOIS / RDAP)</div><div class="section-head-badge">rdap.org</div></div>
+          <div class="section-body"><table class="meta-table" id="tbl-whois"></table></div>
+        </div>
+      </div>
+
+      <!-- DNS -->
+      <div id="tab-dns" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">DNS records</div><div class="section-head-badge">dns.google</div></div>
+          <div class="section-body"><div class="dns-grid" id="dns-grid"></div></div>
+        </div>
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">Email security analysis</div></div>
+          <div class="section-body"><table class="meta-table" id="tbl-email-sec"></table></div>
+        </div>
+      </div>
+
+      <!-- SSL / SUBDOMAINS -->
+      <div id="tab-ssl" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">Certificate Transparency — discovered subdomains</div><div class="section-head-badge">crt.sh</div></div>
+          <div class="section-body">
+            <div id="cert-list-wrap"></div>
+            <p class="source-note">Source: certificate transparency logs. Every subdomain that ever had an SSL certificate issued is permanently recorded here. Hover any row for context.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TECH STACK -->
+      <div id="tab-web" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">Detected technology stack</div><div class="section-head-badge">headers + page source</div></div>
+          <div class="section-body">
+            <div id="stack-wrap"></div>
+            <p class="source-note">Detected from HTTP response headers and page source. Hover any chip to see the exact evidence string that triggered detection.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- LANGUAGE -->
+      <div id="tab-lang" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">Site language &amp; internationalisation</div><div class="section-head-badge">hreflang + headers</div></div>
+          <div class="section-body"><div id="lang-wrap"></div></div>
+        </div>
+      </div>
+
+      <!-- HEADERS -->
+      <div id="tab-headers" class="tab-panel">
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">HTTP response headers</div><div class="section-head-badge">hackertarget.com</div></div>
+          <div class="section-body"><div id="headers-wrap"></div></div>
+        </div>
+        <div class="section-card">
+          <div class="section-head"><div class="section-head-title">Security header analysis</div></div>
+          <div class="section-body"><div id="sec-headers-wrap"></div></div>
+        </div>
+      </div>
+
+      <!-- FINDINGS -->
+      <div id="tab-findings" class="tab-panel">
+        <div class="findings-list" id="findings-list"></div>
+        <div id="findings-empty" style="display:none" class="no-data">No issues detected — looking good.</div>
+      </div>
+
+    </div><!-- /state-results -->
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
